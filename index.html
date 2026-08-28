@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Think Out Loud</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Think Out Loud</h1>
+            <p>Maintain your focus by thinking out loud. We'll gently remind you if you stop.</p>
+        </header>
+
+        <main>
+            <div class="status-panel" id="statusPanel">
+                <div class="indicator" id="statusIndicator"></div>
+                <span id="statusText">Idle - Ready to start</span>
+            </div>
+
+            <div class="visualizer-container">
+                <div class="volume-bar-bg">
+                    <div class="volume-bar-fill" id="volumeBar"></div>
+                    <div class="threshold-line" id="thresholdLine"></div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label for="thresholdSlider">Volume Threshold: <span id="thresholdValue">10</span>%</label>
+                    <input type="range" id="thresholdSlider" min="1" max="100" value="10">
+                </div>
+                
+                <div class="control-group">
+                    <label for="delaySlider">Silence Delay: <span id="delayValue">2.0</span>s</label>
+                    <input type="range" id="delaySlider" min="0.5" max="15" step="0.5" value="2.0">
+                </div>
+            </div>
+
+            <div class="actions">
+                <button id="startBtn" class="btn primary">Start Monitoring</button>
+                <button id="stopBtn" class="btn secondary" disabled>Stop</button>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

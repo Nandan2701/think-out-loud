@@ -17,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let analyser;
     let microphone;
     let javascriptNode;
-    let mediaStream;
 
     let isMonitoring = false;
     let isAlerting = false;
@@ -26,10 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let threshold = parseInt(thresholdSlider.value);
     let delaySeconds = parseFloat(delaySlider.value);
 
-    // =========================
-    // SLIDER CONTROLS
-    // =========================
-
+    // UI Updates for sliders
     thresholdSlider.addEventListener('input', (e) => {
         threshold = parseInt(e.target.value);
         thresholdValue.textContent = threshold;
@@ -44,64 +40,37 @@ document.addEventListener('DOMContentLoaded', () => {
     startBtn.addEventListener('click', startMonitoring);
     stopBtn.addEventListener('click', stopMonitoring);
 
-    // =========================
-    // STATUS
-    // =========================
-
     function updateStatus(state, message) {
-        statusPanel.className = 'status-panel';
-
-        if (state) {
-            statusPanel.classList.add(state);
-        }
-
+        statusPanel.className = 'status-panel'; // reset
+        if (state) statusPanel.classList.add(state);
         statusText.textContent = message;
     }
-
-    // =========================
-    // START MONITORING
-    // =========================
 
     async function startMonitoring() {
         try {
             updateStatus('active', 'Requesting microphone...');
 
-            mediaStream = await navigator.mediaDevices.getUserMedia({
+            const stream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
                 video: false
             });
 
             audioContext = new (
-                window.AudioContext ||
-                window.webkitAudioContext
+                window.AudioContext || window.webkitAudioContext
             )();
 
-            // Make sure the AudioContext is running
-            if (audioContext.state === 'suspended') {
-                await audioContext.resume();
-            }
-
             analyser = audioContext.createAnalyser();
-
-            microphone = audioContext.createMediaStreamSource(mediaStream);
-
-            javascriptNode = audioContext.createScriptProcessor(
-                2048,
-                1,
-                1
-            );
+            microphone = audioContext.createMediaStreamSource(stream);
+            javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
 
             analyser.smoothingTimeConstant = 0.8;
             analyser.fftSize = 1024;
 
             microphone.connect(analyser);
             analyser.connect(javascriptNode);
-
-            // Required so onaudioprocess continues firing
             javascriptNode.connect(audioContext.destination);
 
             isMonitoring = true;
-
             startBtn.disabled = true;
             stopBtn.disabled = false;
 
@@ -109,27 +78,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
             silenceStart = Date.now();
 
-            // =========================
-            // AUDIO PROCESSING
-            // =========================
-
-            javascriptNode.onaudioprocess = function () {
+            javascriptNode.onaudioprocess = function() {
                 if (!isMonitoring) return;
 
-                const array = new Uint8Array(
-                    analyser.frequencyBinCount
-                );
-
+                const array = new Uint8Array(analyser.frequencyBinCount);
                 analyser.getByteFrequencyData(array);
 
                 let values = 0;
+                const length = array.length;
 
-                for (let i = 0; i < array.length; i++) {
-                    values += array[i];
+                for (let i = 0; i < length; i++) {
+                    values += (array[i]);
                 }
 
-                const average = values / array.length;
+                const average = values / length;
 
+                // Average usually goes from 0 to about 100 roughly for normal talking,
+                // normalize it to 0-100 scale more effectively for visualizer.
                 const volumePercent = Math.min(
                     100,
                     Math.round((average / 128) * 100)
@@ -137,59 +102,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 volumeBar.style.width = `${volumePercent}%`;
 
-                // =========================
-                // TALKING DETECTED
-                // =========================
-
                 if (volumePercent >= threshold) {
+                    // We are talking above threshold
                     silenceStart = Date.now();
 
                     if (isAlerting) {
                         isAlerting = false;
-                        updateStatus(
-                            'active',
-                            'Monitoring: Keep talking!'
-                        );
+                        updateStatus('active', 'Monitoring: Keep talking!');
                     }
-                }
-
-                // =========================
-                // SILENCE DETECTED
-                // =========================
-
-                else {
+                } else {
+                    // We are silent
                     const silentFor =
-                        (Date.now() - silenceStart) / 1000;
+                        (Date.now() - silenceStart) / 1000; // in seconds
 
                     if (silentFor >= delaySeconds) {
                         triggerAlert();
-
-                        // Reset timer so the beep repeats
-                        // after another silence period
-                        silenceStart = Date.now();
+                        silenceStart = Date.now(); // Reset to beep again after delay
                     }
                 }
             };
 
         } catch (err) {
-            console.error(
-                'Error accessing microphone:',
-                err
-            );
-
+            console.error("Error accessing microphone", err);
             updateStatus(
                 'error',
                 'Microphone access denied or unavailable.'
             );
-
             startBtn.disabled = false;
             stopBtn.disabled = true;
         }
     }
-
-    // =========================
-    // STOP MONITORING
-    // =========================
 
     function stopMonitoring() {
         isMonitoring = false;
@@ -199,55 +141,29 @@ document.addEventListener('DOMContentLoaded', () => {
             javascriptNode.onaudioprocess = null;
         }
 
-        if (analyser) {
-            analyser.disconnect();
-        }
+        if (analyser) analyser.disconnect();
 
         if (microphone) {
             microphone.disconnect();
+            microphone.mediaStream
+                .getTracks()
+                .forEach(track => track.stop());
         }
 
-        if (mediaStream) {
-            mediaStream.getTracks().forEach((track) => {
-                track.stop();
-            });
-
-            mediaStream = null;
-        }
-
-        if (
-            audioContext &&
-            audioContext.state !== 'closed'
-        ) {
+        if (audioContext && audioContext.state !== 'closed') {
             audioContext.close();
         }
 
-        audioContext = null;
-        analyser = null;
-        microphone = null;
-        javascriptNode = null;
-
         volumeBar.style.width = '0%';
-
         startBtn.disabled = false;
         stopBtn.disabled = true;
-
         isAlerting = false;
-
-        updateStatus(
-            '',
-            'Idle - Ready to start'
-        );
+        updateStatus('', 'Idle - Ready to start');
     }
-
-    // =========================
-    // TRIGGER ALERT
-    // =========================
 
     function triggerAlert() {
         if (!isAlerting) {
             isAlerting = true;
-
             updateStatus(
                 'alerting',
                 'Silence detected! Think out loud!'
@@ -257,84 +173,30 @@ document.addEventListener('DOMContentLoaded', () => {
         playBeep();
     }
 
-    // =========================
-    // MAXIMUM BEEP
-    // =========================
-
     function playBeep() {
-        if (!audioContext || audioContext.state === 'closed') {
-            return;
-        }
+        const ctx =
+            audioContext && audioContext.state !== 'closed'
+                ? audioContext
+                : new (
+                    window.AudioContext || window.webkitAudioContext
+                )();
 
-        // Resume AudioContext if necessary
-        if (audioContext.state === 'suspended') {
-            audioContext.resume();
-        }
-
-        const ctx = audioContext;
-
-        const oscillator = ctx.createOscillator();
+        const osc = ctx.createOscillator();
         const gainNode = ctx.createGain();
-        const compressor = ctx.createDynamicsCompressor();
 
-        // Connect:
-        // Oscillator -> Gain -> Compressor -> Speakers
-        oscillator.connect(gainNode);
-        gainNode.connect(compressor);
-        compressor.connect(ctx.destination);
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
 
-        // Sharp alarm tone
-        oscillator.type = 'square';
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(400, ctx.currentTime);
 
-        // 900 Hz is much more noticeable than 400 Hz
-        oscillator.frequency.setValueAtTime(
-            900,
-            ctx.currentTime
-        );
-
-        // Very strong compression helps make
-        // the alarm consistently loud
-        compressor.threshold.setValueAtTime(
-            -10,
-            ctx.currentTime
-        );
-
-        compressor.knee.setValueAtTime(
-            0,
-            ctx.currentTime
-        );
-
-        compressor.ratio.setValueAtTime(
-            20,
-            ctx.currentTime
-        );
-
-        compressor.attack.setValueAtTime(
-            0.001,
-            ctx.currentTime
-        );
-
-        compressor.release.setValueAtTime(
-            0.05,
-            ctx.currentTime
-        );
-
-        // HIGH OUTPUT LEVEL
-        gainNode.gain.setValueAtTime(
-            1.0,
-            ctx.currentTime
-        );
-
-        // Very short fade-out
+        gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(
             0.001,
-            ctx.currentTime + 0.18
+            ctx.currentTime + 0.3
         );
 
-        oscillator.start(ctx.currentTime);
-
-        oscillator.stop(
-            ctx.currentTime + 0.18
-        );
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.3);
     }
 });

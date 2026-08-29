@@ -187,13 +187,10 @@ document.addEventListener('DOMContentLoaded', () => {
         osc.connect(gainNode);
         gainNode.connect(ctx.destination);
 
-        // Louder and more noticeable beep
         osc.type = 'square';
-        osc.frequency.setValueAtTime(900, ctx.currentTime);
+        osc.frequency.setValueAtTime(400, ctx.currentTime);
 
-        // Maximum practical Web Audio gain
-        gainNode.gain.setValueAtTime(1.0, ctx.currentTime);
-
+        gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(
             0.001,
             ctx.currentTime + 0.3

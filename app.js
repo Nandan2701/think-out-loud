@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let isMonitoring = false;
     let isAlerting = false;
+    let isBeeping = false;
     
     let silenceStart = 0;
     let threshold = parseInt(thresholdSlider.value, 10);
@@ -52,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
             updateStatus('active', 'Requesting microphone...');
             
             // Disable echoCancellation, noiseSuppression, and autoGainControl
-            // to prevent the browser/OS from ducking or cutting system & speaker audio when the mic is active
+            // to prevent the browser/OS from ducking or cutting audio volume when mic is active
             mediaStream = await navigator.mediaDevices.getUserMedia({ 
                 audio: {
                     echoCancellation: false,
@@ -73,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             microphone = audioContext.createMediaStreamSource(mediaStream);
             // Connect microphone ONLY to analyser.
-            // Do NOT connect to audioContext.destination (which cuts/muffles output and causes audio feedback)
+            // Do NOT connect to audioContext.destination (which causes feedback & volume cutting)
             microphone.connect(analyser);
             
             isMonitoring = true;
@@ -95,6 +96,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function processAudio() {
         if (!isMonitoring || !analyser) return;
+
+        // If the beep is currently playing, ignore mic input so the app doesn't detect its own beep
+        if (isBeeping) {
+            animationFrameId = requestAnimationFrame(processAudio);
+            return;
+        }
 
         const array = new Uint8Array(analyser.frequencyBinCount);
         analyser.getByteFrequencyData(array);
@@ -131,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function stopMonitoring() {
         isMonitoring = false;
+        isBeeping = false;
         
         if (animationFrameId) {
             cancelAnimationFrame(animationFrameId);
@@ -180,18 +188,26 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.resume();
         }
 
+        const now = ctx.currentTime;
         const osc = ctx.createOscillator();
         const gainNode = ctx.createGain();
         osc.connect(gainNode);
         gainNode.connect(ctx.destination);
         
         osc.type = 'square';
-        osc.frequency.setValueAtTime(400, ctx.currentTime);
+        osc.frequency.setValueAtTime(400, now);
         
-        gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+        // Maintain solid, clear volume throughout the 0.3s beep without premature exponential drop
+        gainNode.gain.setValueAtTime(0.4, now);
+        gainNode.gain.setValueAtTime(0.4, now + 0.25);
+        gainNode.gain.linearRampToValueAtTime(0.001, now + 0.3);
         
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.3);
+        isBeeping = true;
+        osc.start(now);
+        osc.stop(now + 0.3);
+
+        setTimeout(() => {
+            isBeeping = false;
+        }, 320);
     }
 });
